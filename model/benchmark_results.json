@@ -1,12 +1,12 @@
 {
-  "platform": "AMD64",
+  "platform": "s390x",
   "num_iterations": 1000,
-  "ibm_z_mean_ms": 0.2353,
-  "ibm_z_p50_ms": 0.1811,
-  "ibm_z_p95_ms": 0.4552,
-  "ibm_z_p99_ms": 0.7789,
-  "throughput_evals_per_sec": 4249,
+  "ibm_z_mean_ms": 0.1845,
+  "ibm_z_p50_ms": 0.1821,
+  "ibm_z_p95_ms": 0.1909,
+  "ibm_z_p99_ms": 0.2399,
+  "throughput_evals_per_sec": 5419,
   "cloud_baseline_p50_ms": 185.0,
-  "speedup_factor": 786.1,
+  "speedup_factor": 1002.6,
   "sub_millisecond_pass": true
 }
