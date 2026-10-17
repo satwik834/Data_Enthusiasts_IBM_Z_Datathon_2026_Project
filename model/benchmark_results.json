@@ -1,12 +1,12 @@
 {
   "platform": "s390x",
   "num_iterations": 1000,
-  "ibm_z_mean_ms": 0.1845,
-  "ibm_z_p50_ms": 0.1821,
-  "ibm_z_p95_ms": 0.1909,
-  "ibm_z_p99_ms": 0.2399,
-  "throughput_evals_per_sec": 5419,
+  "ibm_z_mean_ms": 0.083,
+  "ibm_z_p50_ms": 0.0818,
+  "ibm_z_p95_ms": 0.0851,
+  "ibm_z_p99_ms": 0.1126,
+  "throughput_evals_per_sec": 12041,
   "cloud_baseline_p50_ms": 185.0,
-  "speedup_factor": 1002.6,
+  "speedup_factor": 2227.8,
   "sub_millisecond_pass": true
 }
