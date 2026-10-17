@@ -27,10 +27,13 @@ class TestFastAPIServer(unittest.TestCase):
             "heart_rate": 70.0,
             "spo2": 98.0,
             "systolic_bp": 120.0,
+            "diastolic_bp": 80.0,
             "respiration_rate": 15.0,
             "temperature": 36.8,
             "supplemental_o2": False,
-            "consciousness": "A"
+            "consciousness": "A",
+            "pain_score": 1.0,
+            "chief_complaint": "Routine wellness check"
         }
         res = self.client.post("/api/v1/triage", json=payload)
         self.assertEqual(res.status_code, 200)
@@ -39,16 +42,22 @@ class TestFastAPIServer(unittest.TestCase):
         self.assertFalse(data["icu_alert"])
         self.assertFalse(data["icu_bed_reserved"])
         self.assertLess(data["inference_latency_ms"], 5.0)
+        self.assertIn("ai_acuity_probability", data)
+        self.assertIn("shock_index", data)
+        self.assertEqual(data["shock_risk"], "NORMAL")
 
     def test_triage_critical(self):
         payload = {
             "heart_rate": 140.0,
             "spo2": 87.0,
             "systolic_bp": 78.0,
+            "diastolic_bp": 45.0,
             "respiration_rate": 32.0,
             "temperature": 39.8,
             "supplemental_o2": True,
-            "consciousness": "V"
+            "consciousness": "V",
+            "pain_score": 0.0,
+            "chief_complaint": "Severe dyspnea, altered mental status, septic shock"
         }
         res = self.client.post("/api/v1/triage", json=payload)
         self.assertEqual(res.status_code, 200)
@@ -57,6 +66,8 @@ class TestFastAPIServer(unittest.TestCase):
         self.assertTrue(data["icu_alert"])
         self.assertTrue(data["icu_bed_reserved"])
         self.assertGreaterEqual(data["news2_score"], 7)
+        self.assertIn("ai_acuity_probability", data)
+        self.assertEqual(data["shock_risk"], "ELEVATED")
 
     def test_telemetry_sample(self):
         res = self.client.get("/api/v1/telemetry/sample")

@@ -62,13 +62,16 @@ def startup_event():
 
 
 class TriageRequest(BaseModel):
-    heart_rate: float = Field(..., example=135.0, description="Heart Rate in BPM")
-    spo2: float = Field(..., example=89.0, description="Oxygen Saturation in %")
-    systolic_bp: float = Field(..., example=85.0, description="Systolic Blood Pressure in mmHg")
-    respiration_rate: float = Field(..., example=28.0, description="Respirations per minute")
-    temperature: float = Field(..., example=39.2, description="Body Temperature in Celsius")
-    supplemental_o2: bool = Field(False, example=True, description="Patient on supplemental oxygen")
-    consciousness: str = Field("A", example="V", description="AVPU scale: A, V, P, U")
+    heart_rate: float = Field(..., example=115.0, description="Heart Rate in BPM")
+    spo2: float = Field(..., example=95.0, description="Oxygen Saturation in %")
+    systolic_bp: float = Field(..., example=92.0, description="Systolic Blood Pressure in mmHg")
+    respiration_rate: float = Field(..., example=22.0, description="Respirations per minute")
+    temperature: float = Field(..., example=37.8, description="Body Temperature in Celsius")
+    diastolic_bp: Optional[float] = Field(75.0, example=55.0, description="Diastolic Blood Pressure in mmHg")
+    supplemental_o2: bool = Field(False, example=False, description="Patient on supplemental oxygen")
+    consciousness: str = Field("A", example="A", description="AVPU scale: A, V, P, U")
+    pain_score: Optional[float] = Field(0.0, example=4.0, description="Pain rating 0-10")
+    chief_complaint: Optional[str] = Field("", example="DKA, Transfer", description="Emergency triage chief complaint")
 
 
 @app.get("/api/v1/health")
@@ -90,7 +93,8 @@ def health_check():
 def evaluate_triage(req: TriageRequest):
     """
     Evaluates patient vital signs in real time using the on-system clinical AI model.
-    Returns NEWS2 score, ICU alert trigger, and sub-millisecond execution latency.
+    Combines deterministic NEWS2 protocol with MIMIC-IV predictive acuity modeling.
+    Returns sub-millisecond execution latency on IBM LinuxONE s390x.
     """
     if MODEL_PACKAGE is None:
         raise HTTPException(status_code=503, detail="AI Model not yet initialized.")
@@ -98,29 +102,47 @@ def evaluate_triage(req: TriageRequest):
     scaler = MODEL_PACKAGE.get("scaler")
     model = MODEL_PACKAGE.get("model")
 
-    # Encode categorical input
-    c_val = CONSCIOUSNESS_MAP.get(req.consciousness.strip().upper(), 1)
-    o2_val = 1 if req.supplemental_o2 else 0
+    # Encode categorical and derived clinical features
+    c_val = CONSCIOUSNESS_MAP.get(req.consciousness.strip().upper(), 0)
+    o2_val = 1.0 if req.supplemental_o2 else 0.0
+    dbp_val = float(req.diastolic_bp if req.diastolic_bp is not None else 75.0)
+    pain_val = float(req.pain_score if req.pain_score is not None else 0.0)
+
+    # Derived clinical hemodynamic ratios
+    shock_index = float(req.heart_rate / max(1.0, req.systolic_bp))
+    pulse_pressure = float(req.systolic_bp - dbp_val)
+    complaint_lower = str(req.chief_complaint or "").lower()
+    high_risk_kw = [
+        "arrest", "unresponsive", "stroke", "fall", "sob", "bleed",
+        "dka", "seizure", "chest", "intubated", "mvc", "head bleed",
+        "facial droop", "car vs pole"
+    ]
+    complaint_risk = 1.0 if any(k in complaint_lower for k in high_risk_kw) else 0.0
 
     feature_vec = np.array([[
         req.heart_rate,
         req.spo2,
         req.systolic_bp,
+        dbp_val,
         req.respiration_rate,
         req.temperature,
+        shock_index,
+        pulse_pressure,
+        pain_val,
+        float(c_val),
         o2_val,
-        c_val
+        complaint_risk
     ]], dtype=np.float32)
 
-    # Microsecond benchmarked inference
+    # Microsecond benchmarked inference on IBM Telum
     t0 = time.perf_counter_ns()
     if scaler:
         vec_scaled = scaler.transform(feature_vec)
     else:
         vec_scaled = feature_vec
 
-    pred_icu = int(model.predict(vec_scaled)[0])
-    prob_icu = float(model.predict_proba(vec_scaled)[0, 1])
+    pred_acuity = int(model.predict(vec_scaled)[0])
+    prob_acuity = float(model.predict_proba(vec_scaled)[0, 1])
     t1 = time.perf_counter_ns()
 
     latency_us = (t1 - t0) / 1000.0
@@ -137,7 +159,8 @@ def evaluate_triage(req: TriageRequest):
         temperature=req.temperature
     )
 
-    is_critical = bool(pred_icu == 1 or news2["icu_alert"])
+    # Dual-Engine Synergy: High NEWS2 (>=7) OR High Acuity Prediction (P >= 0.60 or pred == 1)
+    is_critical = bool(pred_acuity == 1 or prob_acuity >= 0.60 or news2["icu_alert"])
 
     return {
         "status": "success",
@@ -149,7 +172,11 @@ def evaluate_triage(req: TriageRequest):
         "icu_alert": is_critical,
         "icu_bed_reserved": is_critical,
         "clinical_action": news2["clinical_action"],
-        "ml_icu_probability": round(prob_icu, 4),
+        "ml_icu_probability": round(prob_acuity, 4),
+        "ai_acuity_probability": round(prob_acuity, 4),
+        "ai_acuity_tier": "ESI 1-2 (Emergent / Resuscitation)" if prob_acuity >= 0.50 else "ESI 3-5 (Routine / Urgent)",
+        "shock_index": round(shock_index, 3),
+        "shock_risk": "ELEVATED" if shock_index >= 0.9 else "NORMAL",
         "subscores": news2["subscores"]
     }
 

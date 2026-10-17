@@ -1,0 +1,10 @@
+{
+  "cross_val_accuracy": 0.6547,
+  "cross_val_roc_auc": 0.6791,
+  "cross_val_f1": 0.6672,
+  "cohort_size": 194,
+  "high_acuity_cases": 103,
+  "routine_cases": 91,
+  "data_source": "PhysioNet MIMIC-IV Emergency Department (MIMIC-IV-ED v2.2)",
+  "clinical_standard": "Emergency Severity Index (ESI) Acuity vs Royal College of Physicians NEWS2"
+}

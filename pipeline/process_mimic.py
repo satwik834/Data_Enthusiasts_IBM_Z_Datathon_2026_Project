@@ -76,19 +76,32 @@ def get_real_patient_samples(csv_path: str, limit: int = 20) -> List[Dict[str, A
     df = process_mimic_triage(csv_path)
     samples = []
     for _, row in df.head(limit).iterrows():
+        hr_val = float(row["heart_rate"])
+        sbp_val = float(row["systolic_bp"])
+        dbp_val = float(row.get("diastolic_bp", 70.0))
+        pain_val = 0.0
+        try:
+            pain_val = min(max(float(row.get("pain", 0.0)), 0.0), 10.0)
+        except Exception:
+            pain_val = 0.0
+
         samples.append({
             "subject_id": int(row["subject_id"]),
             "stay_id": int(row["stay_id"]),
             "chief_complaint": str(row.get("chiefcomplaint", "Unknown")),
             "acuity_esi": int(row.get("acuity", 3)),
-            "heart_rate": float(row["heart_rate"]),
+            "heart_rate": hr_val,
             "spo2": float(row["spo2"]),
-            "systolic_bp": float(row["systolic_bp"]),
+            "systolic_bp": sbp_val,
+            "diastolic_bp": dbp_val,
             "respiration_rate": float(row["respiration_rate"]),
             "temperature_c": float(row["temp_c"]),
             "temperature_f": float(row["temperature"]),
             "consciousness": row["consciousness"],
             "supplemental_o2": bool(row["supplemental_o2"]),
+            "pain_score": pain_val,
+            "shock_index": round(hr_val / max(1.0, sbp_val), 2),
+            "pulse_pressure": round(sbp_val - dbp_val, 1),
             "news2_score": int(row["news2_score"]),
             "risk_level": row["risk_level"],
             "icu_alert": bool(row["icu_alert"])

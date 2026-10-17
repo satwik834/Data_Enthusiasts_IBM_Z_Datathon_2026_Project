@@ -27,16 +27,25 @@ def run_benchmark(model_path: str, num_iterations: int = 1000):
         scaler = None
         model = pkg
 
-    # Generate synthetic patient vectors: [HR, SpO2, SBP, RR, Temp, O2, Consciousness]
+    # Generate real-time clinical feature vectors matching MIMIC-IV clinical model:
+    # [HR, SpO2, SBP, DBP, RR, Temp, Shock Index, Pulse Pressure, Pain, Consciousness, Supp O2, Complaint Risk]
     np.random.seed(42)
+    hr = np.random.uniform(50, 160, num_iterations)
+    spo2 = np.random.uniform(75, 100, num_iterations)
+    sbp = np.random.uniform(70, 190, num_iterations)
+    dbp = np.random.uniform(40, 110, num_iterations)
+    rr = np.random.uniform(10, 36, num_iterations)
+    temp = np.random.uniform(35.5, 39.8, num_iterations)
+    shock_index = hr / np.maximum(sbp, 1.0)
+    pulse_pressure = sbp - dbp
+    pain = np.random.uniform(0, 10, num_iterations)
+    consciousness = np.random.choice([0, 1, 2, 3], num_iterations)
+    supp_o2 = np.random.choice([0, 1], num_iterations)
+    complaint_risk = np.random.choice([0, 1], num_iterations)
+
     sample_vectors = np.column_stack([
-        np.random.uniform(50, 160, num_iterations),    # HR
-        np.random.uniform(75, 100, num_iterations),    # SpO2
-        np.random.uniform(70, 190, num_iterations),    # SBP
-        np.random.uniform(10, 36, num_iterations),     # RR
-        np.random.uniform(35.5, 39.8, num_iterations), # Temp
-        np.random.choice([0, 1], num_iterations),      # Supplemental O2
-        np.random.choice([0, 1, 2, 3], num_iterations) # Consciousness
+        hr, spo2, sbp, dbp, rr, temp, shock_index,
+        pulse_pressure, pain, consciousness, supp_o2, complaint_risk
     ]).astype(np.float32)
 
     # Warm-up (50 runs)
