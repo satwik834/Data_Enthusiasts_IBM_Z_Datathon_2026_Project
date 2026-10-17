@@ -1,0 +1,30 @@
+# Private keys and credentials - NEVER COMMIT
+*.pem
+*.key
+*.id_rsa
+*.env
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Data files (large)
+data/*.csv
+!data/.gitkeep
+
+# OS generated
+.DS_Store
+Thumbs.db
+
+# Agent skills cache
+.agents/
+skills-lock.json
