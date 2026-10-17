@@ -20,6 +20,7 @@ venv/
 # Data files (large)
 data/*.csv
 !data/.gitkeep
+!data/mimic_ed_triage.csv
 
 # OS generated
 .DS_Store

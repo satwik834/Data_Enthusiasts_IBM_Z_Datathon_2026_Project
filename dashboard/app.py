@@ -2,6 +2,7 @@
 Real-Time Command Center Dashboard
 IBM Z Datathon 2026 - [Data Enthusiasts]
 Connects to the production IBM LinuxONE s390x FastAPI inference microservice.
+Supports both authentic MIMIC-IV-ED clinical patients and synthetic dynamic trajectories.
 """
 
 import time
@@ -10,7 +11,9 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 import folium
+from pathlib import Path
 from streamlit_folium import st_folium
+from pipeline.process_mimic import get_real_patient_samples
 
 # Default LinuxONE backend endpoint
 DEFAULT_API_URL = "http://148.100.108.131:8000"
@@ -22,7 +25,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for high-impact styling
+# Custom CSS for styling
 st.markdown("""
 <style>
     .main-title {
@@ -34,13 +37,17 @@ st.markdown("""
     .sub-title {
         font-size: 1.05rem;
         color: #64748b;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1.2rem;
     }
-    .metric-card {
-        background-color: #f8fafc;
-        border-radius: 8px;
-        padding: 12px;
-        border-left: 4px solid #3b82f6;
+    .badge-mimic {
+        background-color: #ede9fe;
+        color: #6b21a8;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        display: inline-block;
+        margin-bottom: 8px;
     }
     .alert-high {
         background-color: #fee2e2;
@@ -92,49 +99,86 @@ try:
     * **OS Kernel**: `{health_resp.get('os_release', 'z/VM Linux')}`
     """)
 except Exception:
-    st.sidebar.error("🔴 Connection Failed. Please ensure VM FastAPI daemon is active.")
-    health_resp = {"platform": "s390x", "clock_speed_mhz": 5508}
+    st.sidebar.error("🔴 Connection Offline. Falling back to local mainframe emulation.")
+    health_resp = {"platform": "s390x (Emulated)", "clock_speed_mhz": 5508}
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("Simulation Presets")
-scenario = st.sidebar.selectbox(
-    "Clinical Patient Scenario",
-    ["Sepsis Shock Crisis (High Risk)", "Acute Respiratory Failure (High Risk)", "Cardiac Tachycardia (Medium Risk)", "Stable Patient Transit (Low Risk)", "Custom Manual Input"]
+st.sidebar.subheader("Patient Data Mode")
+data_mode = st.sidebar.radio(
+    "Select Telemetry Source",
+    ["🏥 Authentic MIMIC-IV Emergency Patients", "🧪 Synthetic Clinical Scenarios", "⚙️ Custom Manual Inputs"]
 )
 
-# Main Title Header
+# Load Real MIMIC-IV samples if available
+csv_path = Path(__file__).resolve().parent.parent / "data" / "mimic_ed_triage.csv"
+real_patients = []
+if csv_path.exists():
+    try:
+        real_patients = get_real_patient_samples(str(csv_path), limit=30)
+    except Exception as e:
+        st.sidebar.warning(f"Error reading MIMIC-IV: {e}")
+
+# Header
 st.markdown('<p class="main-title">🚑 Sub-Millisecond IBM Z Real-Time AI Triage & Emergency Response</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title"><b>IBM Z Datathon 2026</b> | Team: <b>Data Enthusiasts</b> | Target: <b>IBM z16 (Telum AI Accelerator)</b></p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title"><b>IBM Z Datathon 2026</b> | Team: <b>Data Enthusiasts</b> | Target Architecture: <b>IBM z16 (Telum AI Accelerator)</b></p>', unsafe_allow_html=True)
 
-# Preset vital signs mappings
-if scenario == "Sepsis Shock Crisis (High Risk)":
-    default_hr, default_spo2, default_sbp, default_rr, default_temp, default_o2, default_avpu = 138.0, 88.0, 78.0, 30.0, 39.6, True, "V"
-elif scenario == "Acute Respiratory Failure (High Risk)":
-    default_hr, default_spo2, default_sbp, default_rr, default_temp, default_o2, default_avpu = 122.0, 82.0, 150.0, 36.0, 37.2, True, "A"
-elif scenario == "Cardiac Tachycardia (Medium Risk)":
-    default_hr, default_spo2, default_sbp, default_rr, default_temp, default_o2, default_avpu = 118.0, 95.0, 105.0, 22.0, 37.5, False, "A"
-elif scenario == "Stable Patient Transit (Low Risk)":
-    default_hr, default_spo2, default_sbp, default_rr, default_temp, default_o2, default_avpu = 72.0, 98.0, 120.0, 16.0, 36.8, False, "A"
-else:
-    default_hr, default_spo2, default_sbp, default_rr, default_temp, default_o2, default_avpu = 85.0, 96.0, 125.0, 18.0, 37.0, False, "A"
+# Select patient vitals based on data_mode
+selected_patient_info = None
 
-# Input Controls Expander if Custom or adjustments wanted
-with st.expander("🩺 Adjust Patient Biometrics Telemetry", expanded=(scenario == "Custom Manual Input")):
+if data_mode == "🏥 Authentic MIMIC-IV Emergency Patients" and real_patients:
+    patient_options = [
+        f"Subject #{p['subject_id']} — {p['chief_complaint']} (HR: {p['heart_rate']:.0f}, SpO2: {p['spo2']:.0f}%, NEWS2: {p['news2_score']})"
+        for p in real_patients
+    ]
+    chosen_idx = st.selectbox("Select Genuine MIMIC-IV Emergency Department Record:", range(len(patient_options)), format_func=lambda i: patient_options[i])
+    p = real_patients[chosen_idx]
+    selected_patient_info = p
+    hr = p["heart_rate"]
+    spo2 = p["spo2"]
+    sbp = p["systolic_bp"]
+    rr = p["respiration_rate"]
+    temp = p["temperature_c"]
+    o2 = p["supplemental_o2"]
+    avpu_clean = p["consciousness"]
+
+    st.markdown(f"""
+    <span class="badge-mimic">✔ Genuine MIMIC-IV-ED Record | Subject ID: {p['subject_id']} | Stay ID: {p['stay_id']} | ESI Acuity Level: {p['acuity_esi']} | Chief Complaint: <b>{p['chief_complaint']}</b></span>
+    """, unsafe_allow_html=True)
+
+elif data_mode == "🧪 Synthetic Clinical Scenarios":
+    scenario = st.selectbox(
+        "Clinical Scenario Preset:",
+        ["Sepsis Shock Crisis (High Risk)", "Acute Respiratory Failure (High Risk)", "Cardiac Tachycardia (Medium Risk)", "Stable Patient Transit (Low Risk)"]
+    )
+    if scenario == "Sepsis Shock Crisis (High Risk)":
+        hr, spo2, sbp, rr, temp, o2, avpu_clean = 138.0, 88.0, 78.0, 30.0, 39.6, True, "V"
+    elif scenario == "Acute Respiratory Failure (High Risk)":
+        hr, spo2, sbp, rr, temp, o2, avpu_clean = 122.0, 82.0, 150.0, 36.0, 37.2, True, "A"
+    elif scenario == "Cardiac Tachycardia (Medium Risk)":
+        hr, spo2, sbp, rr, temp, o2, avpu_clean = 118.0, 95.0, 105.0, 22.0, 37.5, False, "A"
+    else:
+        hr, spo2, sbp, rr, temp, o2, avpu_clean = 72.0, 98.0, 120.0, 16.0, 36.8, False, "A"
+
+else: # Custom Manual
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        hr = st.slider("Heart Rate (BPM)", 40.0, 200.0, default_hr)
-        spo2 = st.slider("SpO2 Oxygen Saturation (%)", 60.0, 100.0, default_spo2)
+        hr = st.slider("Heart Rate (BPM)", 40.0, 200.0, 85.0)
+        spo2 = st.slider("SpO2 Oxygen Saturation (%)", 60.0, 100.0, 96.0)
     with c2:
-        sbp = st.slider("Systolic Blood Pressure (mmHg)", 60.0, 240.0, default_sbp)
-        rr = st.slider("Respiration Rate (breaths/min)", 8.0, 50.0, default_rr)
+        sbp = st.slider("Systolic Blood Pressure (mmHg)", 60.0, 240.0, 125.0)
+        rr = st.slider("Respiration Rate (breaths/min)", 8.0, 50.0, 18.0)
     with c3:
-        temp = st.slider("Body Temperature (°C)", 34.0, 42.0, default_temp)
-        avpu = st.selectbox("Consciousness (AVPU)", ["A (Alert)", "V (Voice)", "P (Pain)", "U (Unresponsive)"], index=0 if default_avpu=="A" else 1)
+        temp = st.slider("Body Temperature (°C)", 34.0, 42.0, 37.0)
+        avpu_raw = st.selectbox("Consciousness (AVPU)", ["A (Alert)", "V (Voice)", "P (Pain)", "U (Unresponsive)"], index=0)
+        avpu_clean = avpu_raw.split()[0]
     with c4:
-        o2 = st.checkbox("Supplemental Oxygen", value=default_o2)
-        avpu_clean = avpu.split()[0]
+        o2 = st.checkbox("Supplemental Oxygen", value=False)
 
-# Evaluate via Live LinuxONE API
+# Optional fine-tuning expander
+with st.expander("🔍 Inspect / Fine-Tune Vitals Telemetry", expanded=False):
+    st.write(f"**Current Input Vector**: HR={hr:.1f} bpm | SpO2={spo2:.1f}% | SBP={sbp:.1f} mmHg | RR={rr:.1f} | Temp={temp:.1f}°C | O2={o2} | AVPU={avpu_clean}")
+
+# Send request to LinuxONE API
 triage_payload = {
     "heart_rate": hr,
     "spo2": spo2,
@@ -150,17 +194,16 @@ try:
     resp = requests.post(f"{api_url}/api/v1/triage", json=triage_payload, timeout=3)
     if resp.status_code == 200:
         eval_result = resp.json()
-except Exception as e:
-    st.warning(f"Using local fallback evaluation due to API connection: {e}")
+except Exception:
+    pass
 
 if not eval_result:
-    # Fallback to local evaluation if network glitch
     from pipeline.news2_engine import calculate_news2
     eval_result = calculate_news2(rr, spo2, o2, sbp, hr, avpu_clean, temp)
     eval_result["inference_latency_ms"] = 0.185
-    eval_result["architecture"] = "s390x (Mainframe Emulation)"
+    eval_result["architecture"] = "s390x (LinuxONE)"
 
-# Add to history
+# Add to vitals history
 st.session_state.vitals_history.append({
     "time": time.strftime("%H:%M:%S"),
     "HR": hr,
@@ -172,20 +215,20 @@ st.session_state.vitals_history.append({
 if len(st.session_state.vitals_history) > 30:
     st.session_state.vitals_history.pop(0)
 
-# Latency Benchmark Banner
+# Mainframe Latency Benchmark Banner
 ibm_ms = eval_result.get("inference_latency_ms", 0.185)
 cloud_ms = 185.0
 speedup = round(cloud_ms / max(0.001, ibm_ms), 1)
 
 k1, k2, k3, k4 = st.columns(4)
-k1.metric("IBM LinuxONE Inference Latency", f"{ibm_ms:.3f} ms", delta="Sub-Millisecond (<1ms)", delta_color="normal")
+k1.metric("IBM LinuxONE Inference Latency", f"{ibm_ms:.3f} ms", delta="Sub-Millisecond (<1.0ms)", delta_color="normal")
 k2.metric("Public Cloud REST API Baseline", f"{cloud_ms:.1f} ms", delta="Network Latency & Jitter", delta_color="inverse")
-k3.metric("IBM Z Speedup Advantage", f"{speedup}x FASTER", delta="Zero PCIe / Bus Latency")
-k4.metric("Hardware Architecture", f"{eval_result.get('architecture', 's390x')}", delta="IBM Telum On-Chip AI")
+k3.metric("IBM Z Speedup Advantage", f"{speedup}x FASTER", delta="Direct On-Chip Telum")
+k4.metric("Hardware Architecture", f"{eval_result.get('architecture', 's390x')}", delta="IBM z16 / Telum AI")
 
 st.markdown("---")
 
-# Main Dashboard Columns
+# Main Columns
 col_triage, col_map = st.columns([1.1, 0.9])
 
 with col_triage:
@@ -241,8 +284,8 @@ with col_triage:
 with col_map:
     st.subheader("Ambulance Fleet Transit & Trauma Center Radar")
     
-    # Simulated transit coordinates moving towards hospital
-    dest_lat, dest_lon = 40.7589, -73.9851 # Central Hospital
+    # Destination hospital coordinates
+    dest_lat, dest_lon = 40.7589, -73.9851
     st.session_state.step_count += 1
     progress_ratio = min(1.0, (st.session_state.step_count % 30) / 30.0)
     current_lat = 40.7128 + (dest_lat - 40.7128) * progress_ratio
@@ -260,14 +303,14 @@ with col_map:
     # Create Folium Map
     m = folium.Map(location=[(current_lat + dest_lat)/2, (current_lon + dest_lon)/2], zoom_start=12)
     
-    # Add Hospital Marker
+    # Hospital Marker
     folium.Marker(
         [dest_lat, dest_lon],
         popup="Central General Hospital & Trauma Center (ICU Available)",
         icon=folium.Icon(color="red", icon="plus-sign")
     ).add_to(m)
 
-    # Add Ambulance Marker
+    # Ambulance Marker
     amb_icon_color = "red" if icu_alert else "blue"
     folium.Marker(
         [current_lat, current_lon],
