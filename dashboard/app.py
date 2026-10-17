@@ -438,7 +438,7 @@ with col_right:
     r3.metric("Estimated Arrival", f"{eta_min} min", "Priority Corridor" if icu_alert else "Standard Route")
 
     # Static Regional Hospital Dispatch Map
-    m = folium.Map(location=[(unit_lat + hospital_lat)/2, (unit_lon + hospital_lon)/2], zoom_start=13, tiles="CartoDB positron")
+    m = folium.Map(location=[(unit_lat + hospital_lat)/2, (unit_lon + hospital_lon)/2], zoom_start=13, tiles="OpenStreetMap")
     
     # Hospital marker
     folium.Marker(
