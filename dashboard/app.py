@@ -282,14 +282,16 @@ if not eval_result:
 ibm_latency = eval_result.get("inference_latency_ms", 0.185)
 cloud_baseline = 185.0
 speedup_calc = round(cloud_baseline / max(0.001, ibm_latency), 1)
+sub_milli_label = "SUB-MILLISECOND EXECUTION" if ibm_latency < 1.0 else "MILLISECOND LATENCY"
+sub_milli_color = "#16a34a" if ibm_latency < 1.0 else "#eab308"
 
 k1, k2, k3, k4 = st.columns(4)
 with k1:
-    st.markdown("""
+    st.markdown(f"""
     <div class="metric-box">
         <div class="metric-lbl">IBM LinuxONE s390x Latency</div>
-        <div class="metric-val">""" + f"{ibm_latency:.3f} ms" + """</div>
-        <div style="font-size: 0.75rem; color: #16a34a; font-weight: 600;">SUB-MILLISECOND EXECUTION</div>
+        <div class="metric-val">{ibm_latency:.3f} ms</div>
+        <div style="font-size: 0.75rem; color: {sub_milli_color}; font-weight: 600;">{sub_milli_label}</div>
     </div>
     """, unsafe_allow_html=True)
 with k2:
@@ -322,8 +324,9 @@ st.markdown("<br>", unsafe_allow_html=True)
 # Main Section: Clinical Triage & Hospital Coordination
 col_left, col_right = st.columns([1.1, 0.9])
 
-risk_level = eval_result.get("risk_level", "LOW")
+risk_level = eval_result.get("combined_risk_level", eval_result.get("risk_level", "LOW"))
 news2_score = eval_result.get("news2_score", 0)
+news2_risk = eval_result.get("news2_risk", "LOW")
 icu_alert = eval_result.get("icu_alert", False)
 
 with col_left:
@@ -333,10 +336,10 @@ with col_left:
         st.markdown(f"""
         <div class="clinical-banner-critical">
             <div style="font-weight: 700; font-size: 1.1rem; color: #9f1239; margin-bottom: 4px;">
-                CRITICAL EMERGENCY — HIGH CLINICAL RISK (NEWS2 SCORE: {news2_score})
+                COMBINED CLINICAL ALERT — HIGH ACUITY (NEWS2: {news2_score} | AI Acuity: {eval_result.get('ai_acuity_probability', 0.9)*100:.1f}%)
             </div>
             <div style="color: #4c0519; font-size: 0.9rem; margin-bottom: 8px;">
-                <b>Clinical Protocol:</b> Immediate assessment by critical care specialist / resuscitation team.
+                <b>Clinical Protocol:</b> Immediate assessment by critical care resuscitation specialist.
             </div>
             <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #881337;">
                 HOSPITAL DISPATCH: ICU Bed #4 automatically locked at Central Regional Trauma Center. Team pre-notified.
@@ -378,7 +381,7 @@ with col_left:
         <div style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 12px; margin-bottom: 12px;">
             <div style="font-size: 0.72rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Clinical Standard Engine</div>
             <div style="font-size: 1.25rem; font-weight: 700; color: #f8fafc; margin-top: 4px;">Royal College NEWS2: {news2_score}/20</div>
-            <div style="font-size: 0.82rem; color: #38bdf8; margin-top: 2px;">Risk Assessment: <b>{risk_level}</b></div>
+            <div style="font-size: 0.82rem; color: #38bdf8; margin-top: 2px;">Protocol Risk: <b>{news2_risk}</b></div>
             <div style="font-size: 0.72rem; color: #64748b; margin-top: 6px;">Protocol: NHS / RCP Deterioration Guideline</div>
         </div>
         """, unsafe_allow_html=True)
@@ -447,14 +450,19 @@ with col_right:
     micro = eval_result.get("micro_profiling_us", {})
     if micro:
         st.markdown("### LinuxONE Execution Budget (Microseconds)")
-        mb1, mb2, mb3, mb4 = st.columns(4)
+        mb1, mb2, mb3 = st.columns(3)
         mb1.metric("Feature Derivation", f"{micro.get('feature_derivation_us', 0):.0f} µs")
-        mb2.metric("Neural Inference", f"{micro.get('neural_inference_us', 0):.0f} µs")
-        mb3.metric("XAI Perturbation", f"{micro.get('xai_attribution_us', 0):.0f} µs")
-        mb4.metric("NEWS2 Protocol", f"{micro.get('news2_evaluation_us', 0):.0f} µs")
+        mb2.metric("Vectorized AI + XAI", f"{micro.get('vectorized_ai_xai_us', micro.get('neural_inference_us', 0)):.0f} µs")
+        mb3.metric("NEWS2 Protocol", f"{micro.get('news2_evaluation_us', 0):.0f} µs")
+        tot_us = micro.get('total_mainframe_us', 0.0)
+        is_sub = tot_us < 1000.0
+        status_txt = "PASS: SUB-MILLISECOND (<1.0 ms)" if is_sub else "MILLISECOND LATENCY"
+        bg_col = "#022c22" if is_sub else "#3b2005"
+        border_col = "#065f46" if is_sub else "#854d0e"
+        txt_col = "#16a34a" if is_sub else "#facc15"
         st.markdown(f"""
-        <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #16a34a; background: #022c22; padding: 6px 10px; border-radius: 4px; margin-bottom: 12px; border: 1px solid #065f46;">
-            TOTAL MAINFRAME TIME: <b>{micro.get('total_mainframe_us', 0):.1f} µs ({micro.get('total_mainframe_us', 0)/1000.0:.3f} ms)</b> | PASS: Sub-Millisecond
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: {txt_col}; background: {bg_col}; padding: 6px 10px; border-radius: 4px; margin-bottom: 12px; border: 1px solid {border_col};">
+            TOTAL MAINFRAME TIME: <b>{tot_us:.1f} µs ({tot_us/1000.0:.3f} ms)</b> | {status_txt}
         </div>
         """, unsafe_allow_html=True)
 

@@ -139,20 +139,14 @@ def evaluate_triage(req: TriageRequest):
     ], dtype=np.float32)
     t_feat_1 = time.perf_counter_ns()
 
-    # Step 2: Neural Network Inference on IBM Telum
+    # Step 2: Unified Vectorized Inference & Explainable AI on IBM Telum
     t_infer_0 = time.perf_counter_ns()
-    vec_2d = raw_vec.reshape(1, -1)
-    vec_scaled = scaler.transform(vec_2d) if scaler else vec_2d
-    pred_acuity = int(model.predict(vec_scaled)[0])
-    prob_acuity = float(model.predict_proba(vec_scaled)[0, 1])
+    xai_data = compute_feature_attribution(raw_vec, scaler, model)
+    prob_acuity = xai_data["acuity_probability"]
+    pred_acuity = 1 if prob_acuity >= 0.50 else 0
     t_infer_1 = time.perf_counter_ns()
 
-    # Step 3: Explainable AI Local Feature Attribution
-    t_xai_0 = time.perf_counter_ns()
-    xai_data = compute_feature_attribution(raw_vec, scaler, model)
-    t_xai_1 = time.perf_counter_ns()
-
-    # Step 4: Clinical NEWS2 ground truth calculation
+    # Step 3: Clinical NEWS2 ground truth calculation
     t_n2_0 = time.perf_counter_ns()
     news2 = calculate_news2(
         respiration_rate=req.respiration_rate,
@@ -170,8 +164,7 @@ def evaluate_triage(req: TriageRequest):
     # Timing metrics in microseconds
     total_us = (t_end - t_start) / 1000.0
     feat_us = (t_feat_1 - t_feat_0) / 1000.0
-    infer_us = (t_infer_1 - t_infer_0) / 1000.0
-    xai_us = (t_xai_1 - t_xai_0) / 1000.0
+    ai_xai_us = (t_infer_1 - t_infer_0) / 1000.0
     news2_us = (t_n2_1 - t_n2_0) / 1000.0
     latency_ms = total_us / 1000.0
 
@@ -189,12 +182,14 @@ def evaluate_triage(req: TriageRequest):
         "inference_latency_us": round(total_us, 1),
         "micro_profiling_us": {
             "feature_derivation_us": round(feat_us, 1),
-            "neural_inference_us": round(infer_us, 1),
-            "xai_attribution_us": round(xai_us, 1),
+            "vectorized_ai_xai_us": round(ai_xai_us, 1),
+            "neural_inference_us": round(ai_xai_us, 1),
             "news2_evaluation_us": round(news2_us, 1),
             "total_mainframe_us": round(total_us, 1)
         },
         "news2_score": news2["news2_score"],
+        "news2_risk": news2["risk_level"],
+        "combined_risk_level": "HIGH" if is_critical else news2["risk_level"],
         "risk_level": "HIGH" if is_critical else news2["risk_level"],
         "icu_alert": is_critical,
         "icu_bed_reserved": is_critical,
