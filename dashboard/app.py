@@ -119,13 +119,17 @@ st.markdown("""
     }
     .patient-tag {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 0.8rem;
-        background-color: #f1f5f9;
-        border: 1px solid #cbd5e1;
-        padding: 6px 10px;
+        font-size: 0.85rem;
+        background-color: #e2e8f0;
+        color: #0f172a !important;
+        border: 1px solid #94a3b8;
+        padding: 8px 12px;
         border-radius: 4px;
         margin-bottom: 12px;
-        display: inline-block;
+        display: block;
+    }
+    .patient-tag * {
+        color: #0f172a !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -204,11 +208,12 @@ if data_source == "MIMIC-IV Clinical Database (Real Patients)" and mimic_records
     avpu = selected_patient["consciousness"]
 
     st.markdown(f"""
-    <div class="patient-tag">
-        <b>PATIENT ENCOUNTER:</b> Subject #{selected_patient['subject_id']} &nbsp;|&nbsp; 
-        Stay ID: #{selected_patient['stay_id']} &nbsp;|&nbsp; 
-        Clinical ESI Acuity: <b>Level {selected_patient['acuity_esi']}</b> &nbsp;|&nbsp; 
-        Admission Complaint: <b>{selected_patient['chief_complaint']}</b>
+    <div class="patient-tag" style="background-color: #e2e8f0; color: #0f172a !important; border: 1px solid #94a3b8; padding: 10px 14px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; margin-bottom: 14px;">
+        <span style="color: #0f172a !important; font-weight: 700;">PATIENT ENCOUNTER:</span> 
+        <span style="color: #1e293b !important;">Subject #{selected_patient['subject_id']}</span> &nbsp;|&nbsp; 
+        <span style="color: #1e293b !important;">Stay ID: #{selected_patient['stay_id']}</span> &nbsp;|&nbsp; 
+        <span style="color: #0f172a !important; font-weight: 700;">Clinical ESI Acuity: Level {selected_patient['acuity_esi']}</span> &nbsp;|&nbsp; 
+        <span style="color: #0f172a !important; font-weight: 700;">Admission Complaint: {selected_patient['chief_complaint']}</span>
     </div>
     """, unsafe_allow_html=True)
 
