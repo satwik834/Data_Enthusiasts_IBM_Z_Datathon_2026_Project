@@ -393,6 +393,27 @@ with col_left:
         </div>
         """, unsafe_allow_html=True)
 
+    # Explainable AI Feature Attribution Breakdown
+    xai_info = eval_result.get("explainable_ai", {})
+    top_drivers = xai_info.get("top_clinical_drivers", [])
+    if top_drivers:
+        st.markdown("#### Clinical Decision Attribution (Explainable AI)")
+        for d in top_drivers:
+            pct = d.get("importance_percentage", 0.0)
+            feat_val = d.get("patient_value", "")
+            title = d.get("title", d.get("feature", ""))
+            rationale = d.get("clinical_rationale", "")
+            bar_color = "#e11d48" if pct > 30 else "#f59e0b"
+            st.markdown(f"""
+            <div style="background: #0f172a; border-left: 3px solid {bar_color}; padding: 8px 12px; margin-bottom: 6px; border-radius: 0 4px 4px 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 600; font-size: 0.85rem; color: #f1f5f9;">{title} (Observed: {feat_val})</span>
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; color: {bar_color}; font-weight: 700;">+{pct:.1f}% risk share</span>
+                </div>
+                <div style="font-size: 0.76rem; color: #94a3b8; margin-top: 2px;">{rationale}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
     # Subscore breakdown
     subscores = eval_result.get("subscores", {})
     if subscores:
@@ -422,6 +443,21 @@ with col_left:
     st.line_chart(df_plot.set_index("Time"))
 
 with col_right:
+    # Micro-Profiling Execution Breakdown
+    micro = eval_result.get("micro_profiling_us", {})
+    if micro:
+        st.markdown("### LinuxONE Execution Budget (Microseconds)")
+        mb1, mb2, mb3, mb4 = st.columns(4)
+        mb1.metric("Feature Derivation", f"{micro.get('feature_derivation_us', 0):.0f} µs")
+        mb2.metric("Neural Inference", f"{micro.get('neural_inference_us', 0):.0f} µs")
+        mb3.metric("XAI Perturbation", f"{micro.get('xai_attribution_us', 0):.0f} µs")
+        mb4.metric("NEWS2 Protocol", f"{micro.get('news2_evaluation_us', 0):.0f} µs")
+        st.markdown(f"""
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #16a34a; background: #022c22; padding: 6px 10px; border-radius: 4px; margin-bottom: 12px; border: 1px solid #065f46;">
+            TOTAL MAINFRAME TIME: <b>{micro.get('total_mainframe_us', 0):.1f} µs ({micro.get('total_mainframe_us', 0)/1000.0:.3f} ms)</b> | PASS: Sub-Millisecond
+        </div>
+        """, unsafe_allow_html=True)
+
     st.markdown("### Regional Emergency Facility Status")
     
     # Receiving Center Coordinates

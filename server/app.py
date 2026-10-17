@@ -24,6 +24,7 @@ sys.path.append(str(ROOT_DIR))
 from pipeline.news2_engine import calculate_news2
 from pipeline.vitals_generator import generate_single_sample
 from pipeline.dispatch_generator import AmbulanceDispatchUnit
+from model.explainability import compute_feature_attribution, classify_shock_index
 
 app = FastAPI(
     title="IBM Z Real-Time AI Emergency Triage Service",
@@ -102,14 +103,17 @@ def evaluate_triage(req: TriageRequest):
     scaler = MODEL_PACKAGE.get("scaler")
     model = MODEL_PACKAGE.get("model")
 
-    # Encode categorical and derived clinical features
+    t_start = time.perf_counter_ns()
+
+    # Step 1: Feature derivation and shock staging
+    t_feat_0 = time.perf_counter_ns()
     c_val = CONSCIOUSNESS_MAP.get(req.consciousness.strip().upper(), 0)
     o2_val = 1.0 if req.supplemental_o2 else 0.0
     dbp_val = float(req.diastolic_bp if req.diastolic_bp is not None else 75.0)
     pain_val = float(req.pain_score if req.pain_score is not None else 0.0)
 
-    # Derived clinical hemodynamic ratios
-    shock_index = float(req.heart_rate / max(1.0, req.systolic_bp))
+    shock_staging = classify_shock_index(req.heart_rate, req.systolic_bp)
+    shock_index = shock_staging["shock_index"]
     pulse_pressure = float(req.systolic_bp - dbp_val)
     complaint_lower = str(req.chief_complaint or "").lower()
     high_risk_kw = [
@@ -119,7 +123,7 @@ def evaluate_triage(req: TriageRequest):
     ]
     complaint_risk = 1.0 if any(k in complaint_lower for k in high_risk_kw) else 0.0
 
-    feature_vec = np.array([[
+    raw_vec = np.array([
         req.heart_rate,
         req.spo2,
         req.systolic_bp,
@@ -132,23 +136,24 @@ def evaluate_triage(req: TriageRequest):
         float(c_val),
         o2_val,
         complaint_risk
-    ]], dtype=np.float32)
+    ], dtype=np.float32)
+    t_feat_1 = time.perf_counter_ns()
 
-    # Microsecond benchmarked inference on IBM Telum
-    t0 = time.perf_counter_ns()
-    if scaler:
-        vec_scaled = scaler.transform(feature_vec)
-    else:
-        vec_scaled = feature_vec
-
+    # Step 2: Neural Network Inference on IBM Telum
+    t_infer_0 = time.perf_counter_ns()
+    vec_2d = raw_vec.reshape(1, -1)
+    vec_scaled = scaler.transform(vec_2d) if scaler else vec_2d
     pred_acuity = int(model.predict(vec_scaled)[0])
     prob_acuity = float(model.predict_proba(vec_scaled)[0, 1])
-    t1 = time.perf_counter_ns()
+    t_infer_1 = time.perf_counter_ns()
 
-    latency_us = (t1 - t0) / 1000.0
-    latency_ms = latency_us / 1000.0
+    # Step 3: Explainable AI Local Feature Attribution
+    t_xai_0 = time.perf_counter_ns()
+    xai_data = compute_feature_attribution(raw_vec, scaler, model)
+    t_xai_1 = time.perf_counter_ns()
 
-    # Clinical NEWS2 ground truth calculation
+    # Step 4: Clinical NEWS2 ground truth calculation
+    t_n2_0 = time.perf_counter_ns()
     news2 = calculate_news2(
         respiration_rate=req.respiration_rate,
         spo2=req.spo2,
@@ -158,15 +163,37 @@ def evaluate_triage(req: TriageRequest):
         consciousness=req.consciousness,
         temperature=req.temperature
     )
+    t_n2_1 = time.perf_counter_ns()
+
+    t_end = time.perf_counter_ns()
+
+    # Timing metrics in microseconds
+    total_us = (t_end - t_start) / 1000.0
+    feat_us = (t_feat_1 - t_feat_0) / 1000.0
+    infer_us = (t_infer_1 - t_infer_0) / 1000.0
+    xai_us = (t_xai_1 - t_xai_0) / 1000.0
+    news2_us = (t_n2_1 - t_n2_0) / 1000.0
+    latency_ms = total_us / 1000.0
 
     # Dual-Engine Synergy: High NEWS2 (>=7) OR High Acuity Prediction (P >= 0.60 or pred == 1)
     is_critical = bool(pred_acuity == 1 or prob_acuity >= 0.60 or news2["icu_alert"])
+
+    top_drivers = xai_data.get("top_clinical_drivers", [])
+    primary_driver = top_drivers[0]["title"] if top_drivers else "Balanced vitals"
+    primary_driver_pct = top_drivers[0]["importance_percentage"] if top_drivers else 0.0
 
     return {
         "status": "success",
         "architecture": platform.machine(),
         "inference_latency_ms": round(latency_ms, 4),
-        "inference_latency_us": round(latency_us, 1),
+        "inference_latency_us": round(total_us, 1),
+        "micro_profiling_us": {
+            "feature_derivation_us": round(feat_us, 1),
+            "neural_inference_us": round(infer_us, 1),
+            "xai_attribution_us": round(xai_us, 1),
+            "news2_evaluation_us": round(news2_us, 1),
+            "total_mainframe_us": round(total_us, 1)
+        },
         "news2_score": news2["news2_score"],
         "risk_level": "HIGH" if is_critical else news2["risk_level"],
         "icu_alert": is_critical,
@@ -175,8 +202,14 @@ def evaluate_triage(req: TriageRequest):
         "ml_icu_probability": round(prob_acuity, 4),
         "ai_acuity_probability": round(prob_acuity, 4),
         "ai_acuity_tier": "ESI 1-2 (Emergent / Resuscitation)" if prob_acuity >= 0.50 else "ESI 3-5 (Routine / Urgent)",
-        "shock_index": round(shock_index, 3),
-        "shock_risk": "ELEVATED" if shock_index >= 0.9 else "NORMAL",
+        "shock_index": shock_index,
+        "shock_risk": "ELEVATED" if shock_staging["is_elevated"] else "NORMAL",
+        "shock_staging": shock_staging,
+        "explainable_ai": {
+            "primary_risk_driver": primary_driver,
+            "primary_driver_importance": primary_driver_pct,
+            "top_clinical_drivers": top_drivers
+        },
         "subscores": news2["subscores"]
     }
 

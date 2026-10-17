@@ -68,6 +68,12 @@ class TestFastAPIServer(unittest.TestCase):
         self.assertGreaterEqual(data["news2_score"], 7)
         self.assertIn("ai_acuity_probability", data)
         self.assertEqual(data["shock_risk"], "ELEVATED")
+        self.assertIn("micro_profiling_us", data)
+        self.assertIn("neural_inference_us", data["micro_profiling_us"])
+        self.assertIn("explainable_ai", data)
+        self.assertIn("top_clinical_drivers", data["explainable_ai"])
+        self.assertIn("shock_staging", data)
+        self.assertEqual(data["shock_staging"]["stage"], "CRITICAL_CIRCULATORY_COLLAPSE")
 
     def test_telemetry_sample(self):
         res = self.client.get("/api/v1/telemetry/sample")
