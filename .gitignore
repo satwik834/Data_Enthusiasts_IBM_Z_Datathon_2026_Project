@@ -4,6 +4,9 @@
 *.id_rsa
 *.env
 
+# PDFs and binary documents
+*.pdf
+
 # Python artifacts
 __pycache__/
 *.py[cod]

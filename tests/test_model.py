@@ -21,22 +21,22 @@ class TestNEWS2Model(unittest.TestCase):
         cls.model = pkg["model"]
 
     def test_stable_prediction(self):
-        # Healthy vitals: HR=72, SpO2=98, SBP=120, RR=16, Temp=37.0, O2=0, Consciousness=0
-        vec = np.array([[72, 98, 120, 16, 37.0, 0, 0]], dtype=np.float32)
+        # Healthy vitals: HR=72, SpO2=98, SBP=120, DBP=80, RR=16, Temp=37.0, SI=0.60, PP=40, Pain=0, Consciousness=0, O2=0, Complaint=0
+        vec = np.array([[72.0, 98.0, 120.0, 80.0, 16.0, 37.0, 0.60, 40.0, 0.0, 0.0, 0.0, 0.0]], dtype=np.float32)
         vec_scaled = self.scaler.transform(vec)
         pred = self.model.predict(vec_scaled)[0]
         self.assertEqual(pred, 0, "Healthy vitals should predict Ward/Stable (0)")
 
     def test_sepsis_shock_prediction(self):
-        # Critical sepsis: HR=140, SpO2=88, SBP=75, RR=32, Temp=39.8, O2=1, Consciousness=2
-        vec = np.array([[140, 88, 75, 32, 39.8, 1, 2]], dtype=np.float32)
+        # Critical sepsis: HR=140, SpO2=88, SBP=75, DBP=45, RR=32, Temp=39.8, SI=1.87, PP=30, Pain=8, Consciousness=2, O2=1, Complaint=1
+        vec = np.array([[140.0, 88.0, 75.0, 45.0, 32.0, 39.8, 1.87, 30.0, 8.0, 2.0, 1.0, 1.0]], dtype=np.float32)
         vec_scaled = self.scaler.transform(vec)
         pred = self.model.predict(vec_scaled)[0]
-        self.assertEqual(pred, 1, "Critical sepsis should trigger ICU Alert (1)")
+        self.assertEqual(pred, 1, "Critical sepsis should trigger High Acuity / ICU Alert (1)")
 
     def test_sub_millisecond_inference_latency(self):
-        # Single-sample inference latency benchmark
-        vec = np.array([[110, 92, 95, 22, 38.2, 1, 1]], dtype=np.float32)
+        # Single-sample inference latency benchmark (12 features)
+        vec = np.array([[110.0, 92.0, 95.0, 60.0, 22.0, 38.2, 1.16, 35.0, 4.0, 1.0, 1.0, 1.0]], dtype=np.float32)
         
         # Warmup
         for _ in range(50):
